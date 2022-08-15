@@ -17,8 +17,8 @@ import static java.util.stream.Collector.Characteristics.UNORDERED;
 
 public class Main {
 
-    private static String regex = "(^([\"]{1})([0-9]+)([\"]{1})$)|()";
-    private static String fileWithStrings = "M:\\educationJava\\interview\\BaltInfoCom\\lng.csv";
+    private static String regex = "(^([\"]{1})([0-9]+)([\"]{1})$)|(^([\"]{1})([\"]{1}))";
+    private static String fileWithStrings = "M:\\educationJava\\interview\\БалтИнфоКом\\lng.txt";
     private static String directoryToSaveResults = "M:\\educationJava\\interview\\BaltInfoCom\\src\\main\\resources";
 
     public static void main(String[] args) throws IOException {
@@ -74,13 +74,14 @@ public class Main {
      * candidate - новая строка.
      * <p>
      * Общий алгоритм:
-     * 1. Составляем Set в Map.
+     * 1. Составляем Set в Map2 в Map1.
      * Set - множество строчек единой группы
-     * Map - слов(физически: его хеш) указывающий на группу, в которой это слово есть
-     * 2. Ищем хеши, слов в строке кандидате, в Map.
+     * Map1 - слово(физически: его хеш) указывающий на группы, в которых это слово есть
+     * Map2 - позиция слова указывающая на те группы, в которых это слово в соответствующей позиции
+     * 2. Ищем хеши/позиции, слов в строке кандидате, в Map1/Map2.
      * Если есть хоть одно.
-     * 2.1 Формируем временную новую группу Set, куда сбрасываем строку-кандидат + все элементы групп соответствующих найденным в Map хешам слов.
-     * 2.2 Так как Map содержит хеш и !указатель! на Set, достаточно обновить группу по любому из найденных хеш слов.
+     * 2.1 Формируем временную новую группу Set, куда сбрасываем строку-кандидат + все элементы групп соответствующих найденным в Map хешам/позициям слов.
+     * 2.2 Так как Map содержит хеш и !указатель! на Set, достаточно обновить группу по любому из найденных хеш слов + позиции.
      * Остальные указывают на тот же сет(согласно реализации алгоритма).
      * 2.3 Добавляем слова(хеши) строки кандидата которых нет в Map + указатель на существующую группу, которой они соответствуют.
      * Если ни одного нет.
@@ -89,79 +90,121 @@ public class Main {
      * P.S.    Все слова в строке-кандитат будут указывать на одну и туже группу Set.
      * Временная группа станет постоянной в конце текущего шага. Для каждой строки-кандидата, создается новая временная группа.
      */
-    private static class GroupLinesCollector implements Collector<String[], Map<String, Set<String[]>>, List<Set<String>>> {
+    private static class GroupLinesCollector implements Collector<String[], Map<String, Map<Integer, Set<String[]>>>, List<Set<String>>> {
 
         @Override
-        public Supplier<Map<String, Set<String[]>>> supplier() {
+        public Supplier<Map<String, Map<Integer, Set<String[]>>>> supplier() {
             return () -> new HashMap<>();
         }
 
         @Override
-        public BiConsumer<Map<String, Set<String[]>>, String[]> accumulator() {
-            return (Map<String, Set<String[]>> acc, String[] candidate) -> {
+        public BiConsumer<Map<String, Map<Integer, Set<String[]>>>, String[]> accumulator() {
+            return (Map<String, Map<Integer, Set<String[]>>> acc, String[] candidate) -> {
 
-                var tempGroup = new HashSet<String[]>();    //Временная новая группа. Для обновления существующих групп
-                tempGroup.add(candidate);                   //или создания новой.
-                for (int i = 0; i < candidate.length; ++i) { //Добавляем во временную группу существующие, если они могут быть группой
-                    if ("".equals(candidate[i]))
+                var tempGroup = new HashSet<String[]>();
+                tempGroup.add(candidate);
+
+                for (int i = 0; i < candidate.length; ++i) {
+                    if (("".equals(candidate[i])) || ("\"\"".equals(candidate[i])))
                         continue;
                     if (acc.containsKey(candidate[i])) {
-                        tempGroup.addAll(acc.get(candidate[i]));
+                        if (acc.get(candidate[i]).containsKey(i)) {
+                            tempGroup.addAll(acc.get(candidate[i]).get(i));
+                        }
                     }
                 }
-                if (tempGroup.size() > 1) {                                       //Если были найдены существующие группы
+
+                if (tempGroup.size() > 1) {
+                    //Ищем "существующую группу". Этот указатель понадобится для добавления несуществующих раннее слов.
+                    Set<String[]> pointerToExistingGroup = new HashSet<>();
+                    for (int indexWord = 0; indexWord < candidate.length; ++indexWord) {
+                        if (acc.containsKey(candidate[indexWord])) {
+                            Set<Integer> setOfPositions = acc.get(candidate[indexWord]).keySet();
+                            for (int indexWordPosition : setOfPositions) {
+                                pointerToExistingGroup = acc.get(candidate[indexWord]).get(indexWordPosition);
+                                break;
+                            }
+                        }
+                    }
+
                     for (int i = 0; i < candidate.length; ++i) {
-                        if ("".equals(candidate[i]))
+                        if (("".equals(candidate[i])) || ("\"\"".equals(candidate[i])))
                             continue;
-                        if (acc.containsKey(candidate[i])) {                    //Если слово уже есть в Map.
-                            acc.get(candidate[i]).addAll(tempGroup);            //Добавляем в существующую группу новые значения из временной группы
-                        } else {                                                //Если слова нет в Map.
-                            int existingGroupFromMap = 0;
-                            while (!(acc.containsKey(candidate[existingGroupFromMap])))     //Ищем индекс (хеш) на указатель уже существующей в Map группы
-                                ++existingGroupFromMap;
-                            acc.put(candidate[i], acc.get(candidate[existingGroupFromMap]));//Добавляем слова(хеши) с указателем на уже существующую группу
+                        if (acc.containsKey(candidate[i])) {
+                            if (acc.get(candidate[i]).containsKey(i))               //Можно упростить, после 1 обновления Set
+                                acc.get(candidate[i]).get(i).addAll(tempGroup);
+                            else {
+                                acc.get(candidate[i]).put(i, pointerToExistingGroup);
+                            }
+                        } else {
+                            Map newMap = new HashMap<Integer, Set<String[]>>();
+                            newMap.put(i, pointerToExistingGroup);
+                            acc.put(candidate[i], newMap);
                         }
                     }
                     return;
                 }
-                //Если существующих групп нет
+
                 for (int i = 0; i < candidate.length; ++i) {
-                    if ("".equals(candidate[i]))
+                    if (("".equals(candidate[i])) || ("\"\"".equals(candidate[i])))
                         continue;
-                    acc.put(candidate[i], tempGroup);
+                    if (acc.containsKey(candidate[i])) {
+                        acc.get(candidate[i]).put(i, tempGroup);
+                    } else {
+                        Map newMap = new HashMap<Integer, Set<String[]>>();
+                        newMap.put(i, tempGroup);
+                        acc.put(candidate[i], newMap);
+                    }
                 }
+
             };
         }
 
         @Override
-        public BinaryOperator<Map<String, Set<String[]>>> combiner() {
+        public BinaryOperator<Map<String, Map<Integer, Set<String[]>>>> combiner() {
+//            return (map1, map2) -> {
+//                for (Map.Entry<String, Set<String[]>> entry : map2.entrySet()) {
+//                    var setFromRightArg = entry.getValue();
+//                    if (map1.containsKey(entry.getKey())) {
+//                        map1.get(entry.getKey()).addAll(setFromRightArg);
+//                        /**
+//                         * Нужно добавить хеш-слова из группы.
+//                         */
+//                    } else {
+//                        map1.put(entry.getKey(), setFromRightArg);
+//                    }
+//                }
+//                return map1;
             return (a1, a2) -> {
-                throw new UnsupportedOperationException("Parallel still not implemented for GroupLinesCollector");
+                throw new UnsupportedOperationException("Параллельность не реализована");
             };
         }
 
-        @Override
-        public Function<Map<String, Set<String[]>>, List<Set<String>>> finisher() {
-            return (Map<String, Set<String[]>> inputMap) -> {
 
-                var keySetForDuplicateGroups = new HashSet<String>(); //Набор ключей(хеш слов), группы которых уже добавлены в результирующий список
+        @Override
+        public Function<Map<String, Map<Integer, Set<String[]>>>, List<Set<String>>> finisher() {
+            return (Map<String, Map<Integer, Set<String[]>>> inputMap) -> {
+
+                Set processedGroups = new HashSet<Set<String[]>>();
                 var result = new ArrayList<Set<String>>();
 
-                for (String key : inputMap.keySet()) {
-                    if (keySetForDuplicateGroups.contains(key))
-                        continue;
-                    Set<String[]> setArrayStrings = inputMap.get(key);
-                    var group = new HashSet<String>();
-                    for (String[] arrayStrings : setArrayStrings) {
-                        keySetForDuplicateGroups.addAll(Arrays.stream(arrayStrings).toList()); //Добавляем все слова из группы в keySetForDuplicateGroups, чтоб не обрабатывать их повторно
-                        String arrayStringsToSingle = arrayStrings[0];
-                        for (int i = 1; i < arrayStrings.length; ++i) {
-                            arrayStringsToSingle += ";";
-                            arrayStringsToSingle += arrayStrings[i];
+                for (String keyWord : inputMap.keySet()) {
+                    for (int keyPosition : inputMap.get(keyWord).keySet()) {
+                        if (processedGroups.contains(inputMap.get(keyWord).get(keyPosition)))
+                            continue;
+                        processedGroups.add(inputMap.get(keyWord).get(keyPosition));
+                        var group = new HashSet<String>();
+                        for (String[] arrayStrings : inputMap.get(keyWord).get(keyPosition)) {
+                            String arrayStringsToSingle = arrayStrings[0];
+                            for (int i = 1; i < arrayStrings.length; ++i) {
+                                arrayStringsToSingle += ";";
+                                arrayStringsToSingle += arrayStrings[i];
+                            }
+                            group.add(arrayStringsToSingle);
                         }
-                        group.add(arrayStringsToSingle);
+                        result.add(group);
+
                     }
-                    result.add(group);
                 }
                 return result;
             };
