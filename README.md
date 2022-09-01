@@ -1,6 +1,6 @@
 # BaltInfoCom
 С помощью Java:
-а) Считать файл (https://github.com/PeacockTeam/new-job/releases/download/v1.0/lng-4.txt.gz), состоящий из строк вида 
+а) Считать файл, состоящий из строк вида 
 
 A1;B1;C1
 
